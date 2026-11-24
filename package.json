@@ -1,0 +1,22 @@
+{
+  "name": "rockusb-flash-mcp",
+  "version": "0.2.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test",
+    "build:windows": "node scripts/build-windows.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.25.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  }
+}
