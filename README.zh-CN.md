@@ -1,38 +1,46 @@
 # RockUSB Flash MCP
 
-在 Codex 或 Claude Code 中指定 Windows 本机的固件路径，通过 USB 给 Rockchip 开发板烧录。主机端支持不同厂商的板卡，固件和 Loader 仍需与具体板型匹配。已在 ArmSoM CM5（RK3576）上验证从 Windows 写入 5.14 GB 的 Debian 12 统一固件，随后从 eMMC 启动。
+[English](README.md) · [下载 Windows x64 测试包（ZIP）](https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.2.0/rockusb-flash-mcp-0.2.0-windows-x64.zip)
 
-## 1. 下载和安装（Windows x64）
+在 Codex 或 Claude Code 里告诉助手固件放在哪里，就可以查看连接的 Rockchip 开发板、核对目标存储并烧录。已在 ArmSoM CM5（RK3576）验证 Windows 经 USB 写入 eMMC 并启动 Debian 12。使用其他板型时，请选用该板厂提供的匹配固件。
 
-1. 在 Windows 10 1809 或更新版本的 x64 电脑上安装并登录 **Codex 桌面版、Codex CLI 或 Claude Code**，任选一个即可。私有测试期间，请先用已获得仓库访问权限的 GitHub 账号登录。
-2. 打开 [v0.2.0 测试版下载页](https://github.com/Mycat-04/rockusb-flash-mcp/releases/tag/v0.2.0)，展开 **Assets**，下载 `rockusb-flash-mcp-0.2.0-windows-x64.zip` 并完整解压。要核对下载完整性，可将 PowerShell 命令 `Get-FileHash .\rockusb-flash-mcp-0.2.0-windows-x64.zip` 的结果与同页的 `.sha256` 对照。
-3. 双击 **Install-RockUSB.cmd**。安装器自带 Node.js，自动获取并校验烧录工具。新电脑若需要安装 Rockusb 驱动或微软运行库，请允许 Windows 的管理员权限提示。安装成功后可以删除解压目录。
-4. 将板型匹配的、已解压的统一固件 `.img` 放入 `%USERPROFILE%\Firmware`。在资源管理器地址栏粘贴这个路径即可打开默认固件目录。
+## 1. 在 Codex 桌面版开始使用
 
-## 2. 接入 Codex 或 Claude Code
+准备一台已安装 Codex 桌面版的 Windows x64 电脑（Windows 10 1809 或更新版本）。测试期间，请用有仓库访问权限的账号登录 GitHub。
 
-### Codex 桌面版和 CLI
+1. **下载安装包。** 点击上方的 **下载 Windows x64 测试包**，在资源管理器中选择 **全部解压**。
+2. **双击安装。** 在解压目录双击 `Install-RockUSB.cmd`。安装器自带 Node.js，会下载烧录组件并注册到 Codex。首次安装驱动或运行库时，按 Windows 提示授权。
+3. **在 Codex 中验证。** 打开 **设置 → MCP 服务器**，确认 `rockusb` 已启用。新建一个本地聊天，发送下面这句话。返回目录路径和文件列表就表示接入成功，目录为空也算成功。
 
-安装窗口显示 `Registered rockusb for codex` 后，在 Codex **新建聊天**。桌面版可直接验证，无需在 PowerShell 找到 `codex` 命令。CLI 用户还可以运行 `codex mcp get rockusb` 查看注册信息。如果先装了 MCP、后装 Codex，在解压目录打开 PowerShell，运行 `.\Install-RockUSB.cmd --client codex` 即可补注册。
+> 用 rockusb 的 list_firmware 列出默认固件目录里的文件。
 
-在新聊天中发送下面这句。即使尚未连接板子，也可以用它验证 MCP 是否接入。
+这一步可以先不接板子。准备测试硬件时，用 USB 数据线连接开发板的烧录口，按板卡手册进入 Loader 或 Maskrom 模式，再问：“用 rockusb 查看现在连接的开发板和 USB 模式。”
 
-> 用 rockusb 的 list_firmware 列出默认固件目录里的文件，只列文件。
+<details>
+<summary>Codex 设置里找不到 rockusb，或想手动添加</summary>
 
-烧录时选择允许**请求批准**的权限模式，以便接收写入确认框。如果当前聊天的审批策略是 `never`，查询和预检仍可用，写入确认可能直接返回 `cancelled`。[Codex MCP 配置](https://developers.openai.com/codex/mcp/) · [审批策略](https://developers.openai.com/codex/config-reference/#approval_policy)
+如果 Codex 是后安装的，先重新双击安装器，再重新打开 Codex。也可以直接在 **设置 → MCP 服务器 → 添加服务器** 中填写本机配置。
 
-### Claude Code
+在资源管理器地址栏打开 `%LOCALAPPDATA%\ArmSoM\RockUSB`，用记事本打开安装器生成的 `mcp-config.json`，找到 `mcpServers.rockusb`，按下表填写。
 
-安装窗口显示 `Registered rockusb for claude` 后，打开新的 PowerShell，运行以下命令。若安装时未检测到 Claude Code，先在解压目录执行 `.\Install-RockUSB.cmd --client claude`。
+| Codex 字段 | 填写内容 |
+| --- | --- |
+| 名称 / 类型 | 名称填 `rockusb`，类型选 **STDIO**。 |
+| 启动命令 | 填 `command` 中的 `node.exe` 完整路径。 |
+| 参数 | 用 **添加参数** 将 `args` 数组中的值依次各填一项。含空格的路径也是一项。 |
+| 工作目录、环境变量 | 留空。 |
 
-```powershell
-claude mcp get rockusb
-claude
-```
+复制 JSON 字符串时去掉两端引号，把路径中的 `\\` 写成单个 `\`。点击 **保存** 后新建聊天，用上面的只读请求验证。[Codex MCP 设置](https://learn.chatgpt.com/docs/developer-settings)
 
-在 Claude Code 会话里输入 `/mcp`，确认列表中有已连接的 `rockusb`，再发送上面同一句只读请求。安装器使用用户级注册，在其他项目目录也可以使用。进行写入需要当前客户端支持并显示 MCP 确认表单。[Claude Code MCP 指南](https://code.claude.com/docs/en/mcp)
+</details>
+
+## 2. 在 Claude Code 中使用
+
+已安装 Claude Code 的电脑可以使用同一个 ZIP。双击安装器后，打开新的 Claude Code 会话，输入 `/mcp`，确认 `rockusb` 已连接，再发送上面的只读请求。若先装了 RockUSB，装好 Claude Code 后再双击一次安装器即可。烧录需要客户端支持 MCP 交互确认。[Claude Code MCP 指南](https://code.claude.com/docs/en/mcp)
 
 ## 3. 从预检到开机验收
+
+镜像可以放入安装器创建的 `%USERPROFILE%\Firmware`，也可以在对话中给出完整路径。首次访问其他目录时会弹出读取授权。Codex 烧录时请使用允许**请求批准**的模式，以便看到写入确认框。[Codex 审批策略](https://developers.openai.com/codex/config-reference/#approval_policy)
 
 1. **识别设备。** 用 USB 数据线把开发板的 OTG 烧录口接到这台电脑，按板卡手册进入 Loader 或 Maskrom 模式。发送“用 rockusb 的 list_devices 查看烧录设备”。连接一块测试板；如果结果是 ADB，先按该板的操作步骤进入烧录模式。
 2. **生成计划。** 下面以 CM5 为例，请把文件名换成自己的。在计划中核对设备模式、目标存储、固件绝对路径和 SHA-256。Loader 模式可读回当前存储；Maskrom 模式下还需根据板卡和固件确认启动介质。
@@ -50,6 +58,8 @@ claude
 如果返回 `cancelled` 且没有 `job_id`，本次写入尚未开始。检查客户端能否显示表单；在 Codex 切换为允许审批的模式后重新生成计划。排查时只跟踪当前任务 ID，避免把上一次的 100% 当作本次进度。
 
 ## 4. 可选安装方式
+
+如需校验下载，在 ZIP 所在目录运行 `Get-FileHash .\rockusb-flash-mcp-0.2.0-windows-x64.zip`，与测试版附件中的 `.sha256` 对照。[测试版附件](https://github.com/Mycat-04/rockusb-flash-mcp/releases/tag/v0.2.0)
 
 安装器将程序和 `mcp-config.json` 放在 `%LOCALAPPDATA%\ArmSoM\RockUSB`。若希望固件留在其他磁盘，可在解压目录运行 `.\Install-RockUSB.cmd --firmware-dir "D:\firmware"` 更新默认目录。对话中也可指定其他绝对路径，首次访问会请求读取授权。
 
