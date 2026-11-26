@@ -1,24 +1,24 @@
 // Exercise the same npm/stdio entry point a client uses, with an empty firmware directory.
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
+import {copyFile, mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 // Without a tarball, exercise the exact unversioned npx invocation from the client instructions.
-let packageSpec = process.argv[2] ?? pkg.name;
-if (packageSpec !== pkg.name && !packageSpec.startsWith('https://')) {
-  packageSpec = pathToFileURL(path.resolve(packageSpec)).href;
-}
 const temporary = await mkdtemp(path.join(tmpdir(), 'rockusb-npx-'));
 const firmware = path.join(temporary, 'Firmware');
 const npm = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
 const client = new Client({name:'rockusb-package-check', version:'1'});
 try {
   await mkdir(firmware);
+  let packageSpec = process.argv[2] ?? pkg.name;
+  if (packageSpec !== pkg.name && !packageSpec.startsWith('https://')) {
+    await copyFile(path.resolve(packageSpec), path.join(temporary, 'candidate.tgz'));
+    packageSpec = 'file:./candidate.tgz';
+  }
   const transport = new StdioClientTransport({
     command:process.execPath,
     args:[npm, 'exec', '--', packageSpec],
