@@ -89,7 +89,12 @@ USB 整包烧录和两种 SD 制卡都使用解压后的 **RKFW** 固件，其�
 
 ## 设置与排查
 
-如果客户端首次连接时因下载耗时而超时，将上方一条命令安装示例末尾的 `install` 换成 `--version`，在 PowerShell 中运行。看到版本号后再回到客户端连接即可。Codex 插件已将启动等待时间设为 180 秒。
+如果客户端下载 npm 包时首次连接超时，将上方安装命令末尾的 `install` 换成 `--version`，在 PowerShell 中运行。看到版本号后，在 Codex 里重新连接，或在 Claude Code 的 `/mcp` 中重新连接 RockUSB。Codex 插件已将启动等待时间设为 180 秒。Claude Code 默认等待 30 秒，网络较慢时可在启动它之前执行以下命令，让当前 PowerShell 会话等待最多 3 分钟。[Claude Code MCP 环境变量说明](https://code.claude.com/docs/en/env-vars)
+
+```powershell
+$env:MCP_TIMEOUT = '180000'
+claude
+```
 
 <details>
 <summary>通过 Codex 插件市场安装</summary>

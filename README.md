@@ -89,7 +89,12 @@ Recovery-based SD upgrade cards, storage switching, erase and partition writes s
 
 ## Setup and troubleshooting
 
-If the first connection times out while npm downloads the package, run the one-command example with `--version` in place of `install`. Once it prints the version, reconnect in the client. The Codex plugin already allows 180 seconds for startup.
+If the first connection times out while npm downloads the package, run the one-command example with `--version` in place of `install`. Once it prints the version, reconnect in Codex or open `/mcp` in Claude Code and reconnect RockUSB. The Codex plugin allows 180 seconds for startup. Claude Code normally waits 30 seconds. On a slow connection you can allow three minutes for that PowerShell session before starting Claude Code. [Claude Code MCP environment variables](https://code.claude.com/docs/en/env-vars)
+
+```powershell
+$env:MCP_TIMEOUT = '180000'
+claude
+```
 
 <details>
 <summary>Use the Codex plugin marketplace</summary>
