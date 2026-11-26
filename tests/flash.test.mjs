@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,9 +15,10 @@ const server = fileURLToPath(new URL('../server.mjs', import.meta.url));
 const listing = 'List of rockusb connected(1)\nDevNo=1 Vid=0x2207,Pid=0x350e,LocationID=1a2    Mode=Maskrom    SerialNo=';
 const [device] = parseDevices(listing);
 async function temp(t) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'rockusb-test-'));
+  const tempRoot = await realpath(os.tmpdir());
+  const dir = await mkdtemp(path.join(tempRoot, 'rockusb-test-'));
   t.after(() => {
-    assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
+    assert.equal(path.dirname(dir), tempRoot);
     assert.ok(path.basename(dir).startsWith('rockusb-test-'));
     return rm(dir, {recursive:true, force:true});
   });
