@@ -11,12 +11,21 @@ const system = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
 const ps = path.join(system, 'WindowsPowerShell/v1.0/powershell.exe');
 const driverDir = 'DriverAssitant_v5.13/Driver/x64/win10/';
 const usbDir = 'upgrade_tool_v2.46_for_window/';
-const upstream = 'https://raw.githubusercontent.com/ArmSoM/rockchip-tools/main/downloads/';
+const upstream = 'https://raw.githubusercontent.com/ArmSoM/rockchip-tools/9737320c3a906fc4bcf25edf222258e80fc00c5b/downloads/';
 const vcRuntime={
   name:'vc_redist.x64.exe',hash:'9c02c9ed120f671b900e6b9471d890e3b2414117a7e53f4ae2e855466fa2b7c9',
   url:'https://download.visualstudio.microsoft.com/download/pr/78d061c5-9ef3-42ab-98ed-3309d1095dc4/9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9/VC_redist.x64.exe'
 };
 export const components = {
+  adb:{
+    name:'platform-tools_r37.0.1-win.zip', url:'https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip',
+    hash:'45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99',
+    files:{'platform-tools/adb.exe':'b4a6b455702684652cccf7b46258b29e653538904359a58fd4931cf3ef286b3f',
+      'platform-tools/AdbWinApi.dll':'c1d653030b4bde65d3e07e4d0b0979e17be56df1436cdd15528630f27808050d',
+      'platform-tools/AdbWinUsbApi.dll':'0710e894d9b40f71a670c13c694079d564c92c1279da382cfe4850983aaebe1b',
+      'platform-tools/libwinpthread-1.dll':'f2044c755e39efc5d47f47c5a942178dd6d79dc8945bb182dc8753d10e2a4269',
+      'platform-tools/NOTICE.txt':'38ec8c6f5b7799c223ffeab1f9e81c2d5fc67b5e56d6424f649630ca1ee1a811'}
+  },
   usb:{
     name:'upgrade_tool_v2.46.zip', url:upstream+'upgrade-tool/upgrade_tool_v2.46.zip',
     hash:'de1dc7ce00ed5cfdaa0432f1c7e3efaf096e5dbb7e0ad851345739f6342c06dc',
@@ -63,11 +72,14 @@ async function download(spec, cache) {
   }
   return archive;
 }
-async function prepareComponent(spec, target, cache) {
+async function prepareComponent(spec, target, cache, stageOnly) {
   const entries=Object.entries(spec.files);
-  if ((await Promise.all(entries.map(([file,sha])=>matches(path.join(target,file),sha)))).every(Boolean)) return;
-  await mkdir(target,{recursive:true});
+  const installed=(await Promise.all(entries.map(([file,sha])=>matches(path.join(target,file),sha)))).every(Boolean);
+  if (installed && !stageOnly) return;
+  // An offline cache needs every archive, even on a PC which has the tools installed.
   const archive=await download(spec,cache);
+  if (installed) return;
+  await mkdir(target,{recursive:true});
   run(path.join(system,'tar.exe'),['-xf',archive,'-C',target,...Object.keys(spec.files)]);
   for (const [file,sha] of entries) if (!await matches(path.join(target,file),sha)) throw Error('Invalid extracted file: '+file);
 }
@@ -128,13 +140,13 @@ async function install() {
   const dirs={};
   for(const [name,spec] of Object.entries(components)) {
     dirs[name]=path.join(target,'tools',name+'-'+spec.hash.slice(0,12));
-    await prepareComponent(spec,dirs[name],cache);
+    await prepareComponent(spec,dirs[name],cache,values['stage-only']);
   }
   await prepareRuntime(cache,!!values['stage-only']);
   const firmware=path.resolve(values['firmware-dir'] || path.join(homedir(),'Firmware'));
   await mkdir(firmware,{recursive:true});
   const command=path.join(app,'node.exe');
-  const args=[path.join(app,'server.mjs'),'--firmware-dir',firmware,'--upgrade-tool',path.join(dirs.usb,usbDir,'upgrade_tool.exe'),'--sd-tool',path.join(dirs.sd,'rockchip_sd_tool.exe'),'--ask-directory','--allow-flash'];
+  const args=[path.join(app,'server.mjs'),'--firmware-dir',firmware,'--upgrade-tool',path.join(dirs.usb,usbDir,'upgrade_tool.exe'),'--adb',path.join(dirs.adb,'platform-tools','adb.exe'),'--sd-tool',path.join(dirs.sd,'rockchip_sd_tool.exe'),'--ask-directory','--allow-flash'];
   const config=path.join(target,'mcp-config.json');
   await writeFile(config,JSON.stringify({mcpServers:{rockusb:{command,args}}},null,2)+'\n');
   if(values['stage-only']) {console.log('Staged without driver installation or client registration: '+config);return;}

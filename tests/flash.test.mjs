@@ -39,8 +39,11 @@ test('parse current and older discovery formats, reject ambiguous devices and mi
   assert.equal(parseDevices(listing.replace('Mode=Maskrom', 'Loader'))[0].mode, 'loader');
   assert.deepEqual(parseDevices('List of rockusb connected(0)'), []);
   assert.throws(() => parseDevices(listing.replace('(1)', '(2)')), /Incomplete/);
-  assert.throws(() => selectDevice([device,device], '1a2'), /exactly one/);
-  assert.throws(() => selectDevice([device], 'fff'), /does not match/);
+  const other = {...device,location:'1a3'};
+  assert.equal(selectDevice([other,device], '1A2'), device);
+  assert.equal(selectDevice([other,device], '1A3'), other);
+  assert.throws(() => selectDevice([device,device], '1a2'), /ambiguous/);
+  assert.throws(() => selectDevice([device], 'fff'), /absent/);
 });
 test('exit status and the explicit final success message must agree', () => {
   assert.doesNotThrow(() => checkUpgradeResult(0, null, 'Download Firmware Success\nUpgrade firmware ok.'));
@@ -89,7 +92,7 @@ test('worker verifies staged image and USB identity before one write', async t =
     calls++;
   };
   const status = async () => JSON.parse(await readFile(path.join(dir,'status.json'),'utf8'));
-  await runJob(dir, plan, async () => [device], write);
+  await runJob(dir, plan, async () => [{...device,location:'1a3'},device], write);
   assert.equal((await status()).state, 'backend_succeeded');
   await runJob(dir, plan, async () => [{...device, pid:'0x330c'}], write);
   assert.match((await status()).message, /identity/);
@@ -122,6 +125,11 @@ test('directory selection lists exact choices and needs one human grant for an e
   await writeFile(path.join(other, 'ubuntu.IMG'), fixture());
   await writeFile(path.join(other, 'notes.txt'), 'not a firmware file');
   await mkdir(path.join(other, 'nested'));
+  await writeFile(path.join(other,'nested','debian.img'),fixture());
+  for (const sub of ['cm5','aim7']) {
+    await mkdir(path.join(root,sub));
+    await writeFile(path.join(root,sub,'update.img'),fixture());
+  }
   const client = new Client({name:'folder-test',version:'1'}, {capabilities:{elicitation:{form:{}}}});
   let grant = false;
   let prompts = 0;
@@ -134,11 +142,20 @@ test('directory selection lists exact choices and needs one human grant for an e
   const list = directory => client.callTool({name:'list_firmware',arguments:{directory}});
   const empty = await list(root);
   assert.deepEqual(JSON.parse(empty.content[0].text).files, []);
+  const search = async (directory,name) => {
+    const result = await client.callTool({name:'list_firmware',arguments:{directory,name}});
+    assert.ok(!result.isError,result.content[0].text);
+    return JSON.parse(result.content[0].text).files;
+  };
+  assert.deepEqual(await search(root,'update'),['aim7','cm5'].map(sub=>path.join(root,sub,'update.img')));
+  assert.deepEqual(await search(path.join(root,'cm5'),'update.img'),[path.join(root,'cm5','update.img')]);
+  assert.deepEqual(await search(root,'update-old'),[]);
   assert.equal(prompts, 0);
   assert.equal((await list(other)).isError, true);
   grant = true;
   const result = JSON.parse((await list(other)).content[0].text);
   assert.deepEqual(result.files.map(file => path.basename(file)), ['debian.img','ubuntu.IMG']);
+  assert.deepEqual(await search(other,'debian'),[path.join(other,'debian.img')]);
   const selected = await client.callTool({name:'inspect_firmware',arguments:{file:result.files[1]}});
   assert.equal(JSON.parse(selected.content[0].text).file, result.files[1]);
   assert.equal(prompts, 2);

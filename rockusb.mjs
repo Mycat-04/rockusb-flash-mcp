@@ -103,9 +103,10 @@ export async function listDevices(backend) {
 }
 
 export function selectDevice(devices, location) {
-  if (devices.length !== 1) throw new Error('Connect exactly one RockUSB device in Loader or Maskrom mode.');
-  const [device] = devices;
-  if (device.vid !== '0x2207' || device.location !== location.toLowerCase() || !['loader','maskrom'].includes(device.mode)) {
+  const matches = devices.filter(device => device.location === location.toLowerCase());
+  if (matches.length !== 1) throw new Error('The selected RockUSB location is absent or ambiguous. List devices and identify the intended USB port.');
+  const [device] = matches;
+  if (device.vid !== '0x2207' || !['loader','maskrom'].includes(device.mode)) {
     throw new Error('The selected RockUSB port or boot mode does not match.');
   }
   return device;

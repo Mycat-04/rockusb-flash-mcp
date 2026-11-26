@@ -7,8 +7,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { inspectImage, listDevices, selectDevice } from './rockusb.mjs';
-import {fileDigest, partitionTable, query, runUsbOperation, storageMenu} from './operations.mjs';
+import {fileDigest, selectPartition, query, runUsbOperation, storageMenu} from './operations.mjs';
 import {writeCard} from './sd.mjs';
+import {enterLoader} from './loader.mjs';
+import {enterConsoleLoader} from './console-loader.mjs';
 
 const jobs = path.join(process.env.XDG_STATE_HOME || path.join(homedir(), '.local', 'state'), 'rockusb-flash-mcp');
 const worker = fileURLToPath(import.meta.url);
@@ -18,9 +20,9 @@ export function checkUpgradeResult(code, signal, tail) {
   if (!/^\s*Upgrade firmware ok[.!]?\s*$/im.test(tail)) throw new Error('Backend exited without a recognized success message. Check the board and the log before retrying.');
 }
 
-async function setStatus(dir, state, message) {
+async function setStatus(dir, state, message, details = {}) {
   const file = path.join(dir, 'status.json');
-  await writeFile(file + '.new', JSON.stringify({state, message, updated:new Date().toISOString()}), {mode:0o600});
+  await writeFile(file + '.new', JSON.stringify({state, message, ...details, updated:new Date().toISOString()}), {mode:0o600});
   await rename(file + '.new', file);
 }
 
@@ -57,6 +59,16 @@ export async function runJob(dir, plan, enumerate = listDevices, flash = writeFi
   const staged = path.join(dir, 'firmware.img');
   try {
     await setStatus(dir, 'checking', 'Rechecking the approved input and target.');
+    if (plan.operation === 'enter_console_loader') {
+      const {state,message,...details} = await enterConsoleLoader(plan,(s,m)=>setStatus(dir,s,m));
+      await setStatus(dir,state,message,{port:plan.device.port,...details});
+      return;
+    }
+    if (plan.operation === 'enter_loader') {
+      const device = await enterLoader(plan, (state,message) => setStatus(dir,state,message));
+      await setStatus(dir,'backend_succeeded','Verified Loader on the approved USB port.',{port:plan.device.port,device});
+      return;
+    }
     if (plan.image) {
       await copyFile(plan.image.file, staged, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
       const copy = await (plan.image.format ? inspectImage : fileDigest)(staged);
@@ -72,8 +84,8 @@ export async function runJob(dir, plan, enumerate = listDevices, flash = writeFi
     if (Object.keys(device).some(key => device[key] !== plan.device[key])) throw new Error('Device identity or mode changed after preflight.');
     if (plan.storage && !(await storageMenu(plan.backend,device)).some(row=>row.current && row.name===plan.storage)) throw Error('Active storage changed after preflight.');
     if (plan.partition) {
-      const rows=partitionTable(await query(plan.backend,device,'partitions'));
-      if(!rows.some(p=>p.name===plan.partition.name && p.start===plan.partition.start && p.sectors===plan.partition.sectors)) throw Error('Partition geometry changed after preflight.');
+      const current=selectPartition(await query(plan.backend,device,'partitions'),plan.partition.name);
+      if(current.start!==plan.partition.start || current.sectors!==plan.partition.sectors) throw Error('Partition geometry changed after preflight.');
     }
     await setStatus(dir, 'writing', 'Running '+(plan.operation || 'firmware upgrade')+'.');
     if (!plan.operation || plan.operation==='flash') await flash(plan.backend, device, staged, dir);
