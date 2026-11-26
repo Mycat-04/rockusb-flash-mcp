@@ -3,9 +3,8 @@
     "rockusb": {
       "command": "npx",
       "args": [
-        "--yes",
-        "https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz",
-        "serve"
+        "-y",
+        "rockusb-flash-mcp@0.5.1"
       ],
       "startup_timeout_sec": 180
     }

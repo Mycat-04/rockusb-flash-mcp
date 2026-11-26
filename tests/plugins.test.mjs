@@ -26,7 +26,6 @@ test('Codex and Claude install the same RockUSB release from their marketplaces'
   // Claude discovers .mcp.json at the plugin root. Codex points to the same file.
   assert.equal(codex.mcpServers, './.mcp.json');
   const { mcpServers } = await readJson(plugin, codex.mcpServers);
-  const release = `https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v${pkg.version}`;
   assert.equal(mcpServers.rockusb.command, 'npx');
-  assert.deepEqual(mcpServers.rockusb.args, ['--yes', `${release}/rockusb-flash-mcp.tgz`, 'serve']);
+  assert.deepEqual(mcpServers.rockusb.args, ['-y', `${pkg.name}@${pkg.version}`]);
 });

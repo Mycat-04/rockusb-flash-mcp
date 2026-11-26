@@ -62,26 +62,28 @@ test('bootstrap rejects a modified archive or checksum before setup', async t =>
   await assert.rejects(verifyWindowsRelease(zip, sum, spec), /checksum mismatch/);
 });
 
-test('serve starts stdio and lists firmware without installing or registering anything', async t => {
-  const dir=await mkdtemp(path.join(tmpdir(), 'rockusb-stdio-'));
-  t.after(() => rm(dir, {recursive:true, force:true}));
-  const firmware=path.join(dir, 'firmware');
-  await mkdir(firmware);
-  await writeFile(path.join(firmware,'test.img'), contents);
-  const args=[cli, 'serve', '--firmware-dir',firmware, '--read-only'];
-  if (process.platform === 'win32') args.push('--target', path.join(dir, 'install'));
-  const client=new Client({name:'bootstrap-test', version:'1.0'});
-  try {
-    await client.connect(new StdioClientTransport({command:process.execPath, args}));
-    const call=async name => {
-      const result=await client.callTool({name, arguments:{}});
-      assert.ok(!result.isError, result.content[0].text);
-      return JSON.parse(result.content[0].text);
-    };
-    const status=await call('server_status');
-    assert.equal(status.version, version);
-    assert.equal(status.write_enabled,false);
-    assert.equal(path.basename((await call('list_firmware')).files[0]), 'test.img');
-    assert.deepEqual(await readdir(dir), ['firmware']);
-  } finally {await client.close();}
-});
+for (const entry of ['bare', 'serve']) {
+  test(`${entry} starts stdio and lists firmware without installing or registering anything`, async t => {
+    const dir=await mkdtemp(path.join(tmpdir(), 'rockusb-stdio-'));
+    t.after(() => rm(dir, {recursive:true, force:true}));
+    const firmware=path.join(dir, 'firmware');
+    await mkdir(firmware);
+    await writeFile(path.join(firmware,'test.img'), contents);
+    const args=entry === 'bare' ? [cli] : [cli, 'serve', '--firmware-dir',firmware, '--read-only'];
+    const env={ROCKUSB_FIRMWARE_DIR:firmware, LOCALAPPDATA:path.join(dir,'local')};
+    const client=new Client({name:'bootstrap-test', version:'1.0'});
+    try {
+      await client.connect(new StdioClientTransport({command:process.execPath, args, env}));
+      const call=async name => {
+        const result=await client.callTool({name, arguments:{}});
+        assert.ok(!result.isError, result.content[0].text);
+        return JSON.parse(result.content[0].text);
+      };
+      const status=await call('server_status');
+      assert.equal(status.version, version);
+      assert.equal(status.write_enabled,entry === 'bare');
+      assert.equal(path.basename((await call('list_firmware')).files[0]), 'test.img');
+      assert.deepEqual(await readdir(dir), ['firmware']);
+    } finally {await client.close();}
+  });
+}

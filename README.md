@@ -1,6 +1,6 @@
 # RockUSB Flash MCP
 
-[中文](README.zh-CN.md) · [Download for Windows x64](https://github.com/Mycat-04/rockusb-flash-mcp/releases/latest)
+[中文](README.zh-CN.md) · [npm package](https://www.npmjs.com/package/rockusb-flash-mcp) · [Download for Windows x64](https://github.com/Mycat-04/rockusb-flash-mcp/releases/latest)
 
 Flash Rockchip boards from a local Codex or Claude Code chat. For example, say **“Flash `D:\Firmware\update.img` to the eMMC on my board.”** RockUSB identifies the device and target storage, prepares the image, and asks you to confirm before writing. If more than one board or image matches, the assistant asks you to choose.
 
@@ -15,10 +15,10 @@ Choose one method on the Windows x64 PC connected to the board or card reader. F
 With x64 Node.js 22 or later and npm installed, run this in PowerShell. Setup installs the native tools, checks the USB driver and runtime, and registers RockUSB with the clients it detects. Accept the Windows administrator prompt if a driver or runtime is needed.
 
 ```powershell
-npx.cmd --yes https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz install
+npx -y rockusb-flash-mcp install
 ```
 
-**No Node.js installed?** Download and run [RockUSB-Setup.exe](https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/RockUSB-Setup.exe). It bundles Node.js and runs the same installer. To register just one client, append `--client codex` or `--client claude` to the installation command.
+To register only Codex or Claude Code, append `--client codex` or `--client claude`. If PowerShell blocks `npx.ps1`, use `npx.cmd` in the same command. On a PC without Node.js, download and run the self-contained [Windows installer](https://github.com/Mycat-04/rockusb-flash-mcp/releases/latest/download/RockUSB-Setup.exe).
 
 ### Configure directly in your client
 
@@ -26,12 +26,12 @@ If you prefer to manage RockUSB inside your client, install x64 Node.js 22+ with
 
 | Client | Configuration |
 | --- | --- |
-| **Codex Desktop** | Open **Settings → MCP servers → Add server**, choose **STDIO**, set the name to `rockusb` and the command to `npx`. Add three arguments in order, **one per field**: `--yes`, `https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz`, `serve`. Save and start a new chat. |
+| **Codex Desktop** | Open **Settings → MCP servers → Add server** and choose **STDIO**. Enter `rockusb` as the name and `npx` as the command. With npm 11, the **only argument** is `rockusb-flash-mcp`. Save and start a new chat. |
 | **Claude Code** | In an interactive session (2.1.275+) run `/plugin install rockusb --marketplace Mycat-04/rockusb-flash-mcp`. Start a new session and open `/mcp`. On earlier plugin-capable versions, run `/plugin marketplace add Mycat-04/rockusb-flash-mcp`, then `/plugin install rockusb@rockusb-tools`. |
 
-The first launch fetches the pinned MCP package. On Windows, RockUSB downloads the verified native tool on its first hardware operation. If the PC needs the USB driver or Visual C++ runtime, append `--client none` to the installation command above and run it once. This keeps your client configuration in place. [Codex MCP guide](https://developers.openai.com/codex/mcp/) · [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins)
+The client starts RockUSB locally. On Windows the first hardware operation downloads and verifies the required native tool. If the PC needs the USB driver or Visual C++ runtime, run `npx -y rockusb-flash-mcp install --client none` once to install the prerequisites and keep your client configuration. [Codex MCP guide](https://developers.openai.com/codex/mcp/) · [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins)
 
-**Check the connection.** Ask **“Run `server_status` and list the images in my default firmware folder.”** You should see version `0.5.0` and a file list. An empty folder is fine. You can do this before connecting a board.
+**Check the connection.** Ask **“Run `server_status` and list the images in my default firmware folder.”** You should see the RockUSB version and a file list. An empty folder is fine. You can do this before connecting a board.
 
 ### First USB flash
 
@@ -88,6 +88,14 @@ The maintainer tested the four boards below. The workflows tested include flashi
 Recovery-based SD upgrade cards, storage switching, erase and partition writes still need end-to-end results. To report yours, include the board, SoC, host OS, image source and checksum, target medium, job result and boot result. Remove personal paths and device serials before posting. [ArmSoM CM5](https://docs.armsom.org/armsom-cm5) · [ArmSoM image flashing guide](https://docs.armsom.org/getting-start/flash-img)
 
 ## Setup and troubleshooting
+
+If an older npm version asks before fetching the package when Codex starts, add `-y` as a separate argument **before** `rockusb-flash-mcp`. [npm exec options](https://docs.npmjs.com/cli/v11/commands/npm-exec/#description)
+
+To pin a deployment, add the version to the package name wherever you use `npx`, for example `rockusb-flash-mcp@0.5.1`. You can also install that exact release using its GitHub tarball:
+
+```powershell
+npx -y https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.1/rockusb-flash-mcp.tgz install
+```
 
 If the first connection times out while npm downloads the package, run the one-command example with `--version` in place of `install`. Once it prints the version, reconnect in Codex or open `/mcp` in Claude Code and reconnect RockUSB. The Codex plugin allows 180 seconds for startup. Claude Code normally waits 30 seconds. On a slow connection you can allow three minutes for that PowerShell session before starting Claude Code. [Claude Code MCP environment variables](https://code.claude.com/docs/en/env-vars)
 

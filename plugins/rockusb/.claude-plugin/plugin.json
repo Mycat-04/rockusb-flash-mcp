@@ -1,6 +1,6 @@
 {
   "name": "rockusb",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Flash Rockchip boards over USB and prepare SD cards.",
   "author": {
     "name": "Mycat-04"

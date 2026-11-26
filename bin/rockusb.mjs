@@ -13,7 +13,7 @@ const help = `RockUSB Flash MCP ${version}
       Install the verified Windows x64 release and register the selected clients.
       Optional: --target DIR, --cache DIR, --stage-only (prepare an offline cache).
 
-  rockusb-flash-mcp serve [--firmware-dir DIR] [--read-only]
+  rockusb-flash-mcp [serve] [--firmware-dir DIR] [--read-only]
       Start the local stdio server. Firmware defaults to your Firmware folder or the
       path saved by Windows setup. Optional: --target DIR (Windows installation),
       --upgrade-tool FILE, --sd-tool FILE, --adb FILE (native tool overrides).
@@ -70,9 +70,11 @@ async function serve(args) {
 }
 
 async function main() {
-  const [command, ...args] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const [command, ...args] = argv;
   if (command === '--version' || command === '-v') return console.log(version);
-  if (command === undefined || ['--help','-h','help'].includes(command) || args.includes('--help')) return console.log(help);
+  if (['--help','-h','help'].includes(command) || args.includes('--help')) return console.log(help);
+  if (command === undefined || command.startsWith('-')) return serve(argv);
   if (command === 'serve') return serve(args);
   if (command === 'install') {
     const {values} = parseArgs({args, options:{target:{type:'string'}, cache:{type:'string'},
