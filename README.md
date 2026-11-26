@@ -57,12 +57,16 @@ For a **partition backup**, allow free space on the PC for the entire partition.
 
 ## Hardware results
 
-| Board and host | Verified result |
-| --- | --- |
-| ArmSoM CM5 IO (RK3576), Windows x64 | USB Loader → eMMC using a 5,143,798,403-byte Debian 12 XFCE image. After reboot the board ran kernel `6.1.118-rk3576` and mounted `/dev/mmcblk0p3` as its root filesystem. |
-| ArmSoM Sige7S, Windows host | Sending `systemctl reboot loader` from the serial console put the running board into Loader and the host detected it on USB. This result covers the board's reboot route only. |
+The maintainer tested the four boards below. The workflows tested include flashing firmware to eMMC and creating an SD boot card with a host card reader.
 
-The maintainer's SD result is for **boot cards**. Recovery-based upgrade cards, storage switching, erase and partition writes still need end-to-end results. To report yours, include the board, SoC, host OS, image source and checksum, target medium, job result and boot result. Remove personal paths and device serials before posting. [ArmSoM CM5](https://docs.armsom.org/armsom-cm5) · [ArmSoM image flashing guide](https://docs.armsom.org/getting-start/flash-img)
+| Board | Hardware test record |
+| --- | --- |
+| ArmSoM-CM5 | On a CM5 IO (RK3576), a Windows x64 host wrote a 5,143,798,403-byte Debian 12 XFCE image to eMMC over USB Loader. After reboot, the board ran kernel `6.1.118-rk3576` with `/dev/mmcblk0p3` as its root filesystem. |
+| ArmSoM-CM7S | Tested on hardware by the maintainer. |
+| ArmSoM-SIGE7S | The maintainer ran `systemctl reboot loader` from the Linux serial console. After the board restarted, Windows detected it in USB Loader mode. |
+| ArmSoM-AIM5 | Tested on hardware by the maintainer. |
+
+Recovery-based SD upgrade cards, storage switching, erase and partition writes still need end-to-end results. To report yours, include the board, SoC, host OS, image source and checksum, target medium, job result and boot result. Remove personal paths and device serials before posting. [ArmSoM CM5](https://docs.armsom.org/armsom-cm5) · [ArmSoM image flashing guide](https://docs.armsom.org/getting-start/flash-img)
 
 ## Setup and troubleshooting
 

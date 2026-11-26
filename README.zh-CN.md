@@ -57,12 +57,16 @@ USB 整包烧录和两种 SD 制卡都使用解压后的 **RKFW** 固件，其�
 
 ## 硬件实测记录
 
-| 板型与主机 | 实测结果 |
-| --- | --- |
-| ArmSoM CM5 IO（RK3576），Windows x64 | 经 USB Loader 向 eMMC 写入 5,143,798,403 字节的 Debian 12 XFCE 固件。重启后运行内核 `6.1.118-rk3576`，根分区挂载自 `/dev/mmcblk0p3`。 |
-| ArmSoM Sige7S，Windows 主机 | 从调试串口执行 `systemctl reboot loader` 后，电脑检测到 USB Loader。该记录验证了从运行中的系统切换到 Loader。 |
+维护者在以下四款开发板上做过真机测试，测试项目包括向 eMMC 烧录固件和使用电脑读卡器制作 SD 启动卡。
 
-维护者验证了 **SD 启动卡**。依赖 recovery 的 SD 升级卡、切换存储、擦除和分区写入仍待补充端到端实测记录。欢迎提交板型、SoC、电脑系统、固件来源及校验值、目标介质、任务结果和启动结果。公开反馈前请隐去个人路径和设备序列号。[ArmSoM CM5 产品文档](https://docs.armsom.org/zh/armsom-cm5) · [ArmSoM 系统镜像烧录指南](https://docs.armsom.org/zh/getting-start/flash-img)
+| 开发板 | 实测记录 |
+| --- | --- |
+| ArmSoM-CM5 | 在 CM5 IO（RK3576）上，用 Windows x64 经 USB Loader 向 eMMC 写入 5,143,798,403 字节的 Debian 12 XFCE 固件。重启后运行内核 `6.1.118-rk3576`，根分区为 `/dev/mmcblk0p3`。 |
+| ArmSoM-CM7S | 维护者已完成真机测试。 |
+| ArmSoM-SIGE7S | 在运行中的 Linux 系统上通过调试串口执行 `systemctl reboot loader`，重启后 Windows 主机识别到 USB Loader。 |
+| ArmSoM-AIM5 | 维护者已完成真机测试。 |
+
+依赖 recovery 的 SD 升级卡、切换存储、擦除和分区写入仍待补充端到端实测记录。欢迎提交板型、SoC、电脑系统、固件来源及校验值、目标介质、任务结果和启动结果。公开反馈前请隐去个人路径和设备序列号。[ArmSoM CM5 产品文档](https://docs.armsom.org/zh/armsom-cm5) · [ArmSoM 系统镜像烧录指南](https://docs.armsom.org/zh/getting-start/flash-img)
 
 ## 设置与排查
 
