@@ -27,7 +27,7 @@ jobs:
       - run: npm test
 
   windows-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     needs: test
     runs-on: windows-latest
     permissions:
@@ -41,18 +41,38 @@ jobs:
           node-version: '24.16.0'
           package-manager-cache: false
       - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag does not match package.json" }
       - run: npm ci --ignore-scripts
       - run: npm run build:windows
-      - name: Publish installer and checksum
+      - name: Package the locked CLI for npx
+        shell: pwsh
+        run: |
+          Copy-Item package-lock.json npm-shrinkwrap.json
+          $packed = npm pack --ignore-scripts --pack-destination dist --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $packed.files.path -notcontains 'npm-shrinkwrap.json') { throw "Missing locked npm dependencies" }
+          $cli = 'dist/rockusb-flash-mcp.tgz'
+          Move-Item -LiteralPath (Join-Path dist $packed.filename) -Destination $cli
+          $hash = (Get-FileHash -Algorithm SHA256 $cli).Hash.ToLowerInvariant()
+          Set-Content "$cli.sha256" "$hash  rockusb-flash-mcp.tgz" -Encoding ascii
+          node scripts/verify-package.mjs $cli
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./dist/RockUSB-Setup.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish verified install options
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $zip = Get-Item "dist/*-windows-x64.zip"
-          $expected = (Get-Content "$($zip.FullName).sha256" -Raw).Split(' ')[0]
-          if ((Get-FileHash -Algorithm SHA256 $zip.FullName).Hash -ne $expected) { throw "Invalid ZIP checksum" }
-          gh release create $env:GITHUB_REF_NAME $zip.FullName "$($zip.FullName).sha256" --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title "RockUSB Flash MCP $env:GITHUB_REF_NAME" --generate-notes --notes "Windows x64: download the ZIP, extract it, and run Install-RockUSB.cmd. The bilingual README covers setup for Codex and Claude Code."
+          $assets = foreach ($file in ($zip, (Get-Item dist/RockUSB-Setup.exe), (Get-Item dist/rockusb-flash-mcp.tgz))) {
+            $expected = (Get-Content "$($file.FullName).sha256" -Raw).Split(' ')[0]
+            if ((Get-FileHash -Algorithm SHA256 $file.FullName).Hash -ne $expected) { throw "Invalid checksum for $($file.Name)" }
+            $file.FullName
+            "$($file.FullName).sha256"
+          }
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title "RockUSB Flash MCP $env:GITHUB_REF_NAME" --generate-notes --notes "Use the one-command npx installer or configure RockUSB directly in Codex or Claude Code. Windows PCs without Node.js can run RockUSB-Setup.exe. Both READMEs include setup and a read-only connection check."

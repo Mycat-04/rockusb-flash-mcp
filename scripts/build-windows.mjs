@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {digest} from './setup-windows.mjs';
@@ -13,7 +13,8 @@ const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const prefix = path.join(out, pkg.name + '-' + pkg.version);
 const appFiles = [
   'server.mjs', 'rockusb.mjs', 'loader.mjs', 'console-loader.mjs', 'jobs.mjs', 'operations.mjs', 'sd.mjs',
-  'package.json', 'package-lock.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'THIRD-PARTY.md'
+  'package.json', 'package-lock.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'THIRD-PARTY.md',
+  'bin', 'scripts/setup-windows.mjs', '.agents/plugins/marketplace.json', '.claude-plugin/marketplace.json', 'plugins'
 ];
 
 async function checksum(file) {
@@ -29,7 +30,7 @@ try {
   const zipRoot = path.join(work, 'windows');
   await mkdir(app);
   await mkdir(zipRoot);
-  for (const name of appFiles) await copyFile(path.join(root, name), path.join(app, name));
+  for (const name of appFiles) await cp(path.join(root, name), path.join(app, name), {recursive:true});
 
   // Release only locked registry packages; never copy a developer's local node_modules.
   const npm = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -62,11 +63,25 @@ try {
   execFileSync(tar, ['-acf', windowsZip, '-C', zipRoot, '.']);
   await checksum(windowsZip);
 
-  const sources = [...appFiles, '.gitignore'];
-  for (const dir of ['scripts', 'tests']) {
-    for (const entry of await readdir(path.join(root, dir), {withFileTypes: true})) {
-      if (entry.isFile() && entry.name.endsWith('.mjs')) sources.push(dir + '/' + entry.name);
-    }
+  const setup = path.join(out, 'RockUSB-Setup.exe');
+  const compiler = path.join(process.env.SystemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
+  const versionInfo = path.join(work, 'Version.cs');
+  const assemblyVersion = pkg.version.match(/^\d+\.\d+\.\d+/)?.[0];
+  if (!assemblyVersion) throw Error('Expected a numeric release version.');
+  await writeFile(versionInfo, '[assembly: System.Reflection.AssemblyVersion("' + assemblyVersion + '.0")]\n');
+  const appManifest = path.join(work, 'setup.manifest');
+  await writeFile(appManifest, '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' +
+    '<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges>' +
+    '<requestedExecutionLevel level="asInvoker" uiAccess="false"/></requestedPrivileges></security></trustInfo></assembly>');
+  execFileSync(compiler, ['/nologo', '/target:exe', '/platform:x64', '/optimize+', '/reference:System.IO.Compression.dll',
+    '/out:' + setup, '/win32manifest:' + appManifest, '/resource:' + windowsZip + ',windows.zip', versionInfo,
+    path.join(root, 'scripts', 'WindowsSetup.cs')], {stdio:'inherit'});
+  await checksum(setup);
+
+  const sources = [...appFiles, '.gitignore', '.github/workflows/check-and-release.yml',
+    'scripts/build-windows.mjs', 'scripts/verify-package.mjs', 'scripts/verify-usb.mjs', 'scripts/WindowsSetup.cs'];
+  for (const entry of await readdir(path.join(root, 'tests'), {withFileTypes: true})) {
+    if (entry.isFile() && entry.name.endsWith('.test.mjs')) sources.push('tests/' + entry.name);
   }
   const sourceZip = prefix + '-source.zip';
   execFileSync(tar, ['-acf', sourceZip, '-C', root, ...sources]);

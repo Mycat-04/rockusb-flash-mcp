@@ -1,7 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync, spawnSync} from 'node:child_process';
 import {createReadStream} from 'node:fs';
-import {access, copyFile, mkdir, mkdtemp, readFile, rename, unlink, writeFile} from 'node:fs/promises';
+import {access, copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,6 +16,7 @@ const vcRuntime={
   name:'vc_redist.x64.exe',hash:'9c02c9ed120f671b900e6b9471d890e3b2414117a7e53f4ae2e855466fa2b7c9',
   url:'https://download.visualstudio.microsoft.com/download/pr/78d061c5-9ef3-42ab-98ed-3309d1095dc4/9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9/VC_redist.x64.exe'
 };
+const executable = {usb:usbDir+'upgrade_tool.exe', adb:'platform-tools/adb.exe', sd:'rockchip_sd_tool.exe'};
 export const components = {
   adb:{
     name:'platform-tools_r37.0.1-win.zip', url:'https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip',
@@ -52,6 +53,17 @@ export async function digest(file) {
   for await (const bytes of createReadStream(file)) hash.update(bytes);
   return hash.digest('hex');
 }
+export function defaultWindowsTarget() {
+  if (!process.env.LOCALAPPDATA) throw Error('Windows user application data directory is unavailable.');
+  return path.join(process.env.LOCALAPPDATA, 'ArmSoM', 'RockUSB');
+}
+function componentDirectory(name, target) {
+  return path.join(target, 'tools', name+'-'+components[name].hash.slice(0,12));
+}
+export function windowsToolPaths(target=defaultWindowsTarget()) {
+  return Object.fromEntries(Object.entries(executable).map(([name, file]) =>
+    [name, path.join(componentDirectory(name,target), file)]));
+}
 async function matches(file, expected) {
   try { return await digest(file) === expected; }
   catch (e) { if (e.code==='ENOENT') return false; throw e; }
@@ -62,12 +74,13 @@ function run(exe, args) {
 async function download(spec, cache) {
   const archive=path.join(cache,spec.name);
   if (!await matches(archive,spec.hash)) {
-    console.log('Downloading '+spec.name);
+    console.error('Downloading '+spec.name);
     const partial=archive+'.'+randomUUID()+'.part';
     try {
       run(path.join(system,'curl.exe'),['--fail','--location','--proto','=https','--proto-redir','=https','--retry','2','--connect-timeout','20','--max-time','300','--output',partial,spec.url]);
       if (!await matches(partial,spec.hash)) throw Error('SHA-256 mismatch: '+spec.name);
-      await rename(partial,archive);
+      try { await rename(partial,archive); }
+      catch (error) { if (!await matches(archive,spec.hash)) throw error; }
     } finally { await unlink(partial).catch(e=>{if(e.code!=='ENOENT')throw e;}); }
   }
   return archive;
@@ -79,13 +92,44 @@ async function prepareComponent(spec, target, cache, stageOnly) {
   // An offline cache needs every archive, even on a PC which has the tools installed.
   const archive=await download(spec,cache);
   if (installed) return;
-  await mkdir(target,{recursive:true});
-  run(path.join(system,'tar.exe'),['-xf',archive,'-C',target,...Object.keys(spec.files)]);
-  for (const [file,sha] of entries) if (!await matches(path.join(target,file),sha)) throw Error('Invalid extracted file: '+file);
+  await mkdir(path.dirname(target),{recursive:true});
+  const stage=await mkdtemp(path.join(path.dirname(target),'stage-'));
+  try {
+    run(path.join(system,'tar.exe'),['-xf',archive,'-C',stage,...Object.keys(spec.files)]);
+    for (const [file,sha] of entries) {
+      if (!await matches(path.join(stage,file),sha)) throw Error('Invalid extracted file: '+file);
+    }
+    try { await rename(stage,target); }
+    catch (error) {
+      // Concurrent installers and older, interrupted installs may already have this directory.
+      if (!['EEXIST','ENOTEMPTY','EACCES','EPERM'].includes(error.code)) throw error;
+      for (const [file,sha] of entries) {
+        const dest=path.join(target,file);
+        if (await matches(dest,sha)) continue;
+        await mkdir(path.dirname(dest),{recursive:true});
+        try { await rename(path.join(stage,file),dest); }
+        catch (moveError) { if (!await matches(dest,sha)) throw moveError; }
+      }
+    }
+  } finally { await rm(stage,{recursive:true,force:true,maxRetries:3}); }
+}
+
+export async function ensureWindowsBackend(name, target=defaultWindowsTarget(), cache=path.join(target,'downloads')) {
+  if(process.platform!=='win32' || process.arch!=='x64') throw Error('Automatic backend setup requires x64 Windows.');
+  if (!Object.hasOwn(executable,name)) throw Error('Unknown Windows backend.');
+  await mkdir(cache,{recursive:true});
+  await prepareComponent(components[name],componentDirectory(name,target),cache,false);
+  return windowsToolPaths(target)[name];
 }
 function hasDriver() {
   const data=execFileSync(path.join(system,'pnputil.exe'),['/enum-drivers'],{windowsHide:true,maxBuffer:16*1024*1024});
   return /\brockusb\.inf\b/i.test(data.toString(data[1]===0 || data[0]===255 ? 'utf16le':'latin1'));
+}
+export async function checkWindowsPrerequisites() {
+  let driver_installed=null;
+  try { driver_installed=hasDriver(); } catch { /* Enumeration may be restricted on managed Windows hosts. */ }
+  const runtime_installed=await access(path.join(system,'vcruntime140.dll')).then(()=>true,()=>false);
+  return {driver_installed,runtime_installed};
 }
 function installDriver(inf) {
   // Only Windows' signed driver installer runs elevated. Supply the path as data.
@@ -112,18 +156,74 @@ async function findClient(name) {
   if(exe) return {exe,prefix:[]};
   const shim=find('(Get-Command '+name+'.cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source');
   if(!shim) return;
-  const entry=path.join(path.dirname(shim),'node_modules',name==='codex'?'@openai/codex/bin/codex.js':'@anthropic-ai/claude-code/cli.js');
-  if(await access(entry).then(()=>true,()=>false)) return {exe:process.execPath,prefix:[entry]};
+  const dir=path.join(path.dirname(shim),'node_modules',name==='codex'?'@openai/codex':'@anthropic-ai/claude-code');
+  const pkg=await readJsonIfPresent(path.join(dir,'package.json'));
+  const bin=typeof pkg?.bin==='string' ? pkg.bin : pkg?.bin?.[name];
+  if(typeof bin!=='string') return;
+  const entry=path.resolve(dir,bin);
+  const relative=path.relative(dir,entry);
+  if (relative.startsWith('..') || path.isAbsolute(relative) || !await access(entry).then(()=>true,()=>false)) return;
+  if (/\.exe$/i.test(entry)) return {exe:entry,prefix:[]};
+  if (/\.[cm]?js$/i.test(entry)) return {exe:process.execPath,prefix:[entry]};
+}
+async function readJsonIfPresent(file) {
+  try { return JSON.parse(await readFile(file,'utf8')); }
+  catch (error) { if(error.code==='ENOENT') return; throw error; }
+}
+export function selectFirmwareDirectory(input, previous, fallback=path.join(homedir(),'Firmware')) {
+  if (input) return path.resolve(input);
+  const args=previous?.mcpServers?.rockusb?.args;
+  const index=Array.isArray(args) ? args.indexOf('--firmware-dir') : -1;
+  const saved=index >= 0 ? args[index+1] : undefined;
+  return typeof saved==='string' && path.isAbsolute(saved) ? saved : fallback;
+}
+function ownedClientCommand(command,target) {
+  if (typeof command!=='string' || path.basename(command).toLowerCase()!=='node.exe') return false;
+  const app=path.dirname(command);
+  return path.relative(target,path.dirname(app))==='' && /^app-[\da-f]{16}-[\da-f]{8}$/i.test(path.basename(app));
+}
+function sameTransport(previous,spec) {
+  return previous?.command===spec.command && JSON.stringify(previous.args)===JSON.stringify(spec.args);
+}
+export function registerCodex(invoke,spec,target) {
+  const prior=JSON.parse(invoke(['mcp','list','--json'])).find(server=>server.name==='rockusb');
+  if(prior) {
+    const transport=prior.transport;
+    if(sameTransport(transport,spec)) return;
+    // The native CLI replaces the whole server table when its name already exists.
+    const customized=prior.enabled===false || prior.enabled_tools!=null || prior.disabled_tools!=null ||
+      prior.startup_timeout_sec!=null || prior.tool_timeout_sec!=null ||
+      transport?.cwd || transport?.env_vars?.length || Object.keys(transport?.env || {}).length;
+    if(!ownedClientCommand(transport?.command,target) || customized) {
+      throw Error('Codex already has a custom rockusb registration. Keep it, or update its command and arguments from '+path.join(target,'mcp-config.json')+'.');
+    }
+  }
+  invoke(['mcp','add','rockusb','--',spec.command,...spec.args]);
+}
+export function registerClaude(invoke, spec, previous, target) {
+  const add=config=>invoke(['mcp','add-json','--scope','user','rockusb',JSON.stringify(config)]);
+  // Avoid removing registrations on repeated installs, including an approved direct plugin setup.
+  if(sameTransport(previous,spec)) return;
+  try { add(spec); }
+  catch (error) {
+    if(!/already exists/i.test(String(error.stderr)+String(error.stdout))) throw error;
+    if (!ownedClientCommand(previous?.command,target)) {
+      throw Error('Claude Code already has a different user-scoped rockusb registration. Review it with "claude mcp get rockusb" before replacing it.');
+    }
+    invoke(['mcp','remove','--scope','user','rockusb']);
+    try { add({...previous,...spec}); }
+    catch (registrationError) { add(previous); throw registrationError; }
+  }
 }
 async function install() {
   if(process.platform!=='win32' || process.arch!=='x64') throw Error('This package requires x64 Windows 10 (1809+) or Windows 11.');
   const {values}=parseArgs({options:{target:{type:'string'},cache:{type:'string'},'stage-only':{type:'boolean'},'firmware-dir':{type:'string'},client:{type:'string',default:'auto'}}});
-  if(!['auto','codex','claude'].includes(values.client)) throw Error('Choose --client auto, codex or claude.');
+  if(!['auto','codex','claude','none'].includes(values.client)) throw Error('Choose --client auto, codex, claude or none.');
   const release=path.dirname(fileURLToPath(import.meta.url));
   const manifest=JSON.parse(await readFile(path.join(release,'release.json'),'utf8'));
   const archive=path.join(release,'app.tgz');
   if(!await matches(archive,manifest.payload) || !await matches(process.execPath,manifest.runtime)) throw Error('Release integrity check failed. Extract the complete original ZIP.');
-  const target=path.resolve(values.target || path.join(process.env.LOCALAPPDATA,'ArmSoM','RockUSB'));
+  const target=path.resolve(values.target || defaultWindowsTarget());
   const cache=path.resolve(values.cache || path.join(target,'downloads'));
   await mkdir(cache,{recursive:true});
   await mkdir(target,{recursive:true});
@@ -131,46 +231,80 @@ async function install() {
   try {await access(path.join(app,'ready'));}
   catch {
     const stage=await mkdtemp(path.join(target,'install-'));
-    run(path.join(system,'tar.exe'),['-xf',archive,'-C',stage]);
-    await copyFile(process.execPath,path.join(stage,'node.exe'));
-    await copyFile(path.join(release,'NODE-LICENSE.txt'),path.join(stage,'NODE-LICENSE.txt'));
-    await writeFile(path.join(stage,'ready'),manifest.payload);
-    await rename(stage,app);
+    try {
+      run(path.join(system,'tar.exe'),['-xf',archive,'-C',stage]);
+      await copyFile(process.execPath,path.join(stage,'node.exe'));
+      await copyFile(path.join(release,'NODE-LICENSE.txt'),path.join(stage,'NODE-LICENSE.txt'));
+      await writeFile(path.join(stage,'ready'),manifest.payload);
+      await rename(stage,app);
+    } finally { await rm(stage,{recursive:true,force:true,maxRetries:3}); }
   }
-  const dirs={};
   for(const [name,spec] of Object.entries(components)) {
-    dirs[name]=path.join(target,'tools',name+'-'+spec.hash.slice(0,12));
-    await prepareComponent(spec,dirs[name],cache,values['stage-only']);
+    await prepareComponent(spec,componentDirectory(name,target),cache,values['stage-only']);
   }
   await prepareRuntime(cache,!!values['stage-only']);
-  const firmware=path.resolve(values['firmware-dir'] || path.join(homedir(),'Firmware'));
+  const config=path.join(target,'mcp-config.json');
+  const firmware=selectFirmwareDirectory(values['firmware-dir'],await readJsonIfPresent(config));
   await mkdir(firmware,{recursive:true});
   const command=path.join(app,'node.exe');
-  const args=[path.join(app,'server.mjs'),'--firmware-dir',firmware,'--upgrade-tool',path.join(dirs.usb,usbDir,'upgrade_tool.exe'),'--adb',path.join(dirs.adb,'platform-tools','adb.exe'),'--sd-tool',path.join(dirs.sd,'rockchip_sd_tool.exe'),'--ask-directory','--allow-flash'];
-  const config=path.join(target,'mcp-config.json');
-  await writeFile(config,JSON.stringify({mcpServers:{rockusb:{command,args}}},null,2)+'\n');
+  const tools=windowsToolPaths(target);
+  const args=[path.join(app,'server.mjs'),'--firmware-dir',firmware,'--upgrade-tool',tools.usb,'--adb',tools.adb,'--sd-tool',tools.sd,'--ask-directory','--allow-flash'];
+  const configStage=config+'.'+randomUUID()+'.tmp';
+  try {
+    await writeFile(configStage,JSON.stringify({mcpServers:{rockusb:{command,args}}},null,2)+'\n');
+    await rename(configStage,config);
+  } finally {await unlink(configStage).catch(e=>{if(e.code!=='ENOENT')throw e;});}
   if(values['stage-only']) {console.log('Staged without driver installation or client registration: '+config);return;}
-  if(!hasDriver()) installDriver(path.join(dirs.driver,driverDir,'rockusb.inf'));
+  if(!hasDriver()) installDriver(path.join(componentDirectory('driver',target),driverDir,'rockusb.inf'));
+  if(values.client==='none') {console.log('Windows tools and driver are ready. Configuration: '+config);return;}
   const choices=values.client==='auto'?['codex','claude']:[values.client];
   let registered=false;
   for(const name of choices) {
     const client=await findClient(name);
-    if(!client) continue;
+    if(!client) {
+      if(values.client!=='auto') throw Error(name+' was not found. Install the client and rerun setup, or manually register from '+config);
+      continue;
+    }
     const invoke=argv=>run(client.exe,[...client.prefix,...argv]);
-    if(name==='codex') invoke(['mcp','add','rockusb','--',command,...args]);
+    if(name==='codex') registerCodex(invoke,{command,args},target);
     else {
-      // add-json refuses to overwrite an existing user entry. Keep all other servers intact.
-      const json=JSON.stringify({type:'stdio',command,args});
-      try {invoke(['mcp','add-json','--scope','user','rockusb',json]);}
-      catch(e) {
-        if(!/already exists/i.test(String(e.stderr)+String(e.stdout))) throw e;
-        invoke(['mcp','remove','--scope','user','rockusb']);
-        invoke(['mcp','add-json','--scope','user','rockusb',json]);
-      }
+      const file=path.join(process.env.CLAUDE_CONFIG_DIR || homedir(),'.claude.json');
+      const prior=(await readJsonIfPresent(file))?.mcpServers?.rockusb;
+      registerClaude(invoke,{type:'stdio',command,args},prior,target);
     }
     registered=true; console.log('Registered rockusb for '+name+'. Open a new chat.');
   }
   if(!registered) console.log('No supported client executable found. Install Codex or Claude Code and rerun, or use '+config+' in your MCP client.');
   console.log('Installation directory: '+target);
 }
-if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) install().catch(e=>{console.error(e.message);process.exitCode=1;});
+function runInstaller() {
+  if (process.platform!=='win32' || process.arch!=='x64') throw Error('Setup requires x64 Windows.');
+  if (process.argv[2]==='--under-install-lock') {
+    process.argv.splice(2,1);
+    return install();
+  }
+  // Windows releases the mutex even after an interrupted install. The child keeps the
+  // original console for progress and UAC, and receives paths/arguments strictly as data.
+  const encoded=Buffer.from(JSON.stringify([process.argv[1],'--under-install-lock',...process.argv.slice(2)])).toString('base64');
+  const script=`$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+$name='Local\\RockUSB-Setup-'+[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$mutex=[Threading.Mutex]::new($false,$name)
+try {
+  try { $held=$mutex.WaitOne([TimeSpan]::FromMinutes(5)) } catch [Threading.AbandonedMutexException] { $held=$true }
+  if (!$held) { throw 'Another RockUSB installation is still running. Let it finish and retry.' }
+  [string[]]$parameters=ConvertFrom-Json -InputObject ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')))
+  & $env:ROCKUSB_INSTALL_NODE @parameters
+  exit $LASTEXITCODE
+} finally {
+  if ($held) { $mutex.ReleaseMutex() }
+  $mutex.Dispose()
+}`;
+  const result=spawnSync(ps,['-NoProfile','-NonInteractive','-OutputFormat','Text','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
+    {stdio:'inherit',windowsHide:true,env:{...process.env,ROCKUSB_INSTALL_NODE:process.execPath}});
+  if (result.error) throw result.error;
+  process.exitCode=result.status??1;
+}
+if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+  try { await runInstaller(); } catch(e) { console.error(e.message);process.exitCode=1; }
+}

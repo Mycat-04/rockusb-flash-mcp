@@ -1,0 +1,10 @@
+{
+  "name": "rockusb",
+  "version": "0.5.0",
+  "description": "Flash Rockchip boards over USB and prepare SD cards.",
+  "author": {
+    "name": "Mycat-04"
+  },
+  "homepage": "https://github.com/Mycat-04/rockusb-flash-mcp",
+  "license": "MIT"
+}

@@ -6,13 +6,32 @@ Flash Rockchip boards from a local Codex or Claude Code chat. For example, say *
 
 **Hardware-tested workflows include writing firmware to eMMC and making an SD boot card.** The maintainer has tested ArmSoM-CM5, ArmSoM-CM7S, ArmSoM-SIGE7S and ArmSoM-AIM5.
 
-## Quick start on Windows
+## Connect RockUSB on Windows
 
-Use a Windows x64 PC with Codex Desktop or Claude Code installed. The ZIP includes Node.js. Setup downloads and checks the Rockchip driver, the command-line flashing tool and other required components. You can start on a PC with no Rockchip tools installed.
+Choose one method on the Windows x64 PC connected to the board or card reader. First-time setup needs internet access.
 
-1. In [Releases](https://github.com/Mycat-04/rockusb-flash-mcp/releases/latest), download the asset ending in **`-windows-x64.zip`**. In File Explorer, select **Extract All**, then double-click **`Install-RockUSB.cmd`**. First-time installation requires internet access. Windows may ask for administrator permission to install the driver or runtime.
-2. Open your local client. In **Codex Desktop**, check **Settings → MCP servers** for `rockusb`, then open a new chat. In **Claude Code**, open a new interactive session and enter **`/mcp`** to check the connection. If you install a client later, run the installer again. [Codex MCP guide](https://developers.openai.com/codex/mcp/) · [Claude Code MCP guide](https://code.claude.com/docs/en/mcp)
-3. Ask **“Which images are in my default firmware folder?”** A directory path and file list, even an empty list, confirm the connection. This check works without a board.
+### One-command installation
+
+With x64 Node.js 22 or later and npm installed, run this in PowerShell. Setup installs the native tools, checks the USB driver and runtime, and registers RockUSB with the clients it detects. Accept the Windows administrator prompt if a driver or runtime is needed.
+
+```powershell
+npx.cmd --yes https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz install
+```
+
+**No Node.js installed?** Download and run [RockUSB-Setup.exe](https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/RockUSB-Setup.exe). It bundles Node.js and runs the same installer. To register just one client, append `--client codex` or `--client claude` to the installation command.
+
+### Configure directly in your client
+
+If you prefer to manage RockUSB inside your client, install x64 Node.js 22+ with npm and choose your client below.
+
+| Client | Configuration |
+| --- | --- |
+| **Codex Desktop** | Open **Settings → MCP servers → Add server**, choose **STDIO**, set the name to `rockusb` and the command to `npx`. Add three arguments in order, **one per field**: `--yes`, `https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz`, `serve`. Save and start a new chat. |
+| **Claude Code** | In an interactive session (2.1.275+) run `/plugin install rockusb --marketplace Mycat-04/rockusb-flash-mcp`. Start a new session and open `/mcp`. On earlier plugin-capable versions, run `/plugin marketplace add Mycat-04/rockusb-flash-mcp`, then `/plugin install rockusb@rockusb-tools`. |
+
+The first launch fetches the pinned MCP package. On Windows, RockUSB downloads the verified native tool on its first hardware operation. If the PC needs the USB driver or Visual C++ runtime, append `--client none` to the installation command above and run it once. This keeps your client configuration in place. [Codex MCP guide](https://developers.openai.com/codex/mcp/) · [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins)
+
+**Check the connection.** Ask **“Run `server_status` and list the images in my default firmware folder.”** You should see version `0.5.0` and a file list. An empty folder is fine. You can do this before connecting a board.
 
 ### First USB flash
 
@@ -70,10 +89,12 @@ Recovery-based SD upgrade cards, storage switching, erase and partition writes s
 
 ## Setup and troubleshooting
 
-<details>
-<summary>Register RockUSB manually in Codex Desktop</summary>
+If the first connection times out while npm downloads the package, run the one-command example with `--version` in place of `install`. Once it prints the version, reconnect in the client. The Codex plugin already allows 180 seconds for startup.
 
-Open `%LOCALAPPDATA%\ArmSoM\RockUSB\mcp-config.json` and find `mcpServers.rockusb`. In **Settings → MCP servers → Add server**, set the name to `rockusb`, select **STDIO**, and copy the executable from `command`. Add each item from `args` as a separate argument, in order. When copying a JSON path into a field, omit the surrounding quotes and use one backslash for each escaped pair. Leave the working directory and environment empty. Save and open a new chat.
+<details>
+<summary>Use the Codex plugin marketplace</summary>
+
+Run `codex plugin marketplace add Mycat-04/rockusb-flash-mcp`, then install **RockUSB** from the Plugins screen or run `codex plugin add rockusb@rockusb-tools`. Start a new chat. [Codex plugin marketplaces](https://developers.openai.com/plugins/build/plugins#add-a-marketplace-from-the-cli)
 
 </details>
 

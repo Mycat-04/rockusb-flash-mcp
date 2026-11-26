@@ -6,13 +6,32 @@ RockUSB 让你在本地 Codex 或 Claude Code 对话中烧录 Rockchip 开发板
 
 **已在真机验证向 eMMC 烧录固件和制作 SD 启动卡。** 维护者测试过的板型包括 ArmSoM-CM5、ArmSoM-CM7S、ArmSoM-SIGE7S 和 ArmSoM-AIM5。
 
-## Windows 快速入门
+## 在 Windows 上接入 RockUSB
 
-准备一台装有 Codex 桌面版或 Claude Code 的 Windows x64 电脑。安装包自带 Node.js，安装时自动下载并校验 Rockchip 驱动、命令行烧录工具等组件。新电脑可以直接从以下步骤开始。
+在连接开发板或读卡器的 Windows x64 电脑上，从以下方式中任选一种。首次安装需要联网。
 
-1. 在[发布页面](https://github.com/Mycat-04/rockusb-flash-mcp/releases/latest)下载文件名以 **`-windows-x64.zip`** 结尾的附件。在资源管理器中选择 **全部解压**，双击 **`Install-RockUSB.cmd`**。首次安装需要联网，安装驱动或运行库时按 Windows 提示授权。
-2. 打开本地客户端。**Codex 桌面版**在 **设置 → MCP 服务器** 中确认 `rockusb` 已启用，然后新建聊天。**Claude Code** 在新的交互会话中输入 **`/mcp`**，确认 `rockusb` 已连接。如果后续才安装客户端，再运行一次安装器即可。[Codex MCP 指南](https://developers.openai.com/codex/mcp/) · [Claude Code MCP 指南](https://code.claude.com/docs/en/mcp)
-3. 发送 **“看看默认固件目录里有哪些镜像。”** 返回目录和文件列表即表示接入成功，空列表也算成功。这一步无需连接开发板。
+### 一条命令安装
+
+已安装 x64 版 Node.js 22 或更新版本及 npm 的用户，在 PowerShell 执行以下命令。安装器会准备烧录工具、检查 USB 驱动和运行库，并自动注册到检测到的客户端。首次安装驱动或运行库时，按 Windows 提示授权。
+
+```powershell
+npx.cmd --yes https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz install
+```
+
+**电脑上还没有 Node.js？** 下载并双击 [RockUSB-Setup.exe](https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/RockUSB-Setup.exe) 即可，安装器自带 Node.js。如果只想注册一个客户端，可在安装命令末尾加 `--client codex` 或 `--client claude`。
+
+### 在客户端内直接配置
+
+如果希望由客户端管理 RockUSB，先安装 x64 版 Node.js 22 或更新版本及 npm，再按下表选择客户端。RockUSB 在这台电脑上运行，可访问本机的 USB 接口和读卡器。
+
+| 客户端 | 配置方法 |
+| --- | --- |
+| **Codex 桌面版** | 打开 **设置 → MCP 服务器 → 添加服务器**，类型选 **STDIO**，名称填 `rockusb`，启动命令填 `npx`。依次添加三个参数，**每项单独一行**：`--yes`、`https://github.com/Mycat-04/rockusb-flash-mcp/releases/download/v0.5.0/rockusb-flash-mcp.tgz`、`serve`。保存后新建聊天。 |
+| **Claude Code** | 在 2.1.275 或更新版本的交互会话中执行 `/plugin install rockusb --marketplace Mycat-04/rockusb-flash-mcp`。新开会话，输入 `/mcp` 查看连接。支持插件的旧版本可依次执行 `/plugin marketplace add Mycat-04/rockusb-flash-mcp` 和 `/plugin install rockusb@rockusb-tools`。 |
+
+客户端首次启动时会下载指定版本的 MCP。在 Windows 上，首次执行硬件操作时才下载并校验对应工具。如果新电脑缺少 USB 驱动或 Visual C++ 运行库，在上方安装命令末尾加 `--client none` 执行一次，即可保留现有客户端配置并补齐组件。[Codex MCP 指南](https://developers.openai.com/codex/mcp/) · [Claude Code 插件指南](https://code.claude.com/docs/en/discover-plugins)
+
+**验证是否接入成功。** 在新会话中发送 **“用 `server_status` 查看 RockUSB 版本，再列出默认固件目录里的镜像。”** 返回版本 `0.5.0` 和文件列表即表示连接成功。空目录也能验证，这一步无需接板。
 
 ### 第一次通过 USB 烧录
 
@@ -70,10 +89,12 @@ USB 整包烧录和两种 SD 制卡都使用解压后的 **RKFW** 固件，其�
 
 ## 设置与排查
 
-<details>
-<summary>在 Codex 桌面版手动添加 RockUSB</summary>
+如果客户端首次连接时因下载耗时而超时，将上方一条命令安装示例末尾的 `install` 换成 `--version`，在 PowerShell 中运行。看到版本号后再回到客户端连接即可。Codex 插件已将启动等待时间设为 180 秒。
 
-打开 `%LOCALAPPDATA%\ArmSoM\RockUSB\mcp-config.json`，找到 `mcpServers.rockusb`。在 **设置 → MCP 服务器 → 添加服务器** 中，名称填 `rockusb`，类型选 **STDIO**，启动命令填 `command` 中的路径。用 **添加参数** 把 `args` 中的值依次各填一项。手动复制 JSON 路径时，去掉两端引号，并把每对转义反斜杠写成一个反斜杠。工作目录和环境变量留空，保存后新建聊天。
+<details>
+<summary>通过 Codex 插件市场安装</summary>
+
+执行 `codex plugin marketplace add Mycat-04/rockusb-flash-mcp`，在客户端的插件页面安装 **RockUSB**，也可以执行 `codex plugin add rockusb@rockusb-tools`。新建聊天即可使用。[Codex 插件市场说明](https://developers.openai.com/plugins/build/plugins#add-a-marketplace-from-the-cli)
 
 </details>
 

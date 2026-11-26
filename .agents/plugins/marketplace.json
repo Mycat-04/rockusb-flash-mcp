@@ -1,0 +1,20 @@
+{
+  "name": "rockusb-tools",
+  "interface": {
+    "displayName": "RockUSB"
+  },
+  "plugins": [
+    {
+      "name": "rockusb",
+      "source": {
+        "source": "local",
+        "path": "./plugins/rockusb"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Utilities"
+    }
+  ]
+}

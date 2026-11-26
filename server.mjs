@@ -14,13 +14,40 @@ import {identifyConsole, listConsoles} from './console-loader.mjs';
 
 const {values} = parseArgs({options:{
   'firmware-dir':{type:'string'}, 'upgrade-tool':{type:'string'}, 'allow-flash':{type:'boolean'},
-  'ask-directory':{type:'boolean'}, 'sd-tool':{type:'string'}, adb:{type:'string'}
+  'ask-directory':{type:'boolean'}, 'sd-tool':{type:'string'}, adb:{type:'string'},
+  'auto-tools-dir':{type:'string'}
 }});
 const root = values['firmware-dir'];
 if (!root || !path.isAbsolute(root)) throw new Error('Provide --firmware-dir with an absolute directory path.');
 const backend = values['upgrade-tool'];
 if (values.adb && !path.isAbsolute(values.adb)) throw Error('--adb requires an absolute executable path.');
 const adb = values.adb || (process.platform === 'win32' ? 'adb.exe' : 'adb');
+const toolsDir = values['auto-tools-dir'];
+if (toolsDir && (process.platform !== 'win32' || !path.isAbsolute(toolsDir))) {
+  throw Error('--auto-tools-dir requires an absolute Windows directory.');
+}
+const windowsSetup = toolsDir ? await import('./scripts/setup-windows.mjs') : null;
+const managedPaths = windowsSetup?.windowsToolPaths(toolsDir);
+async function toolPath(component, configuredPath) {
+  if (managedPaths && managedPaths[component] === configuredPath) {
+    return windowsSetup.ensureWindowsBackend(component, toolsDir);
+  }
+  return configuredPath;
+}
+async function usbDevices() {
+  const executable = await toolPath('usb', backend);
+  try {
+    return await listDevices(executable);
+  } catch (error) {
+    if (windowsSetup && executable === managedPaths.usb) {
+      const prerequisites = await windowsSetup.checkWindowsPrerequisites();
+      if (!prerequisites.runtime_installed) {
+        throw Error('The Windows USB tool needs the Visual C++ runtime. Run the RockUSB installer with --client none, then list devices again.', {cause:error});
+      }
+    }
+    throw error;
+  }
+}
 const plans = new Map();
 const approvedDirs = new Set();
 const {name, version} = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
@@ -120,13 +147,20 @@ tool('list_firmware', 'Find the firmware the user named (“帮我烧录 xx 固�
   return {directory, files:files.sort()};
 });
 tool('list_devices', 'Find RockUSB, USB ADB and USB serial adapters for “帮我烧录固件到板子”. When only a debug console is available, use enter_loader_from_console as part of the flash request.', {}, true, async () => {
-  const [devices,adbInfo,consoleInfo] = await Promise.all([listDevices(backend),
-    listAdbDevices(adb).then(adb_devices => ({adb_devices}), error => ({adb_devices:[],adb_diagnostic:error.code === 'ENOENT' ? 'Install Android platform-tools or configure --adb.' : error.message})),
+  const [devices,adbInfo,consoleInfo] = await Promise.all([usbDevices(),
+    toolPath('adb', adb).then(listAdbDevices).then(adb_devices => ({adb_devices}), error => ({adb_devices:[],adb_diagnostic:error.code === 'ENOENT' ? 'Install Android platform-tools or configure --adb.' : error.message})),
     listConsoles().then(serial_ports=>({serial_ports}),error=>({serial_ports:[],serial_diagnostic:error.message}))]);
   const found = {devices,...adbInfo,...consoleInfo};
   if (!devices.some(d=>['loader','maskrom'].includes(d.mode)) && !adbInfo.adb_devices.some(d=>d.state==='device') && consoleInfo.serial_ports.length)
     found.loader_hint = 'For a flash or Loader request: identify the intended debug console with enter_loader_from_console. After verified Loader, continue the original request.';
   if (process.platform === 'win32') {
+    if (windowsSetup && !devices.length) {
+      found.windows_prerequisites = await windowsSetup.checkWindowsPrerequisites();
+      const prerequisites = found.windows_prerequisites;
+      if (prerequisites.driver_installed === false || prerequisites.runtime_installed === false) {
+        found.host_setup_hint = 'Run the Windows installer with --client none to install missing drivers or runtime libraries. Then reconnect the board and list devices again.';
+      }
+    }
     return {...found, pnp:backend && !devices.length ? await listDevices() : undefined, host:'windows', backend:backend ? 'upgrade_tool' : 'PnP', write_enabled:!!backend && !!values['allow-flash']};
   }
   return found;
@@ -144,7 +178,7 @@ function remember(plan) {
 }
 async function attached(location) {
   if (!backend) throw Error('Configure the native USB backend.');
-  return selectDevice(await listDevices(backend),location);
+  return selectDevice(await usbDevices(),location);
 }
 async function activeStorage(device) {
   return (await storageMenu(backend,device)).find(row=>row.current).name;
@@ -153,7 +187,7 @@ tool('enter_loader','Handle “帮我进入 Loader 模式” / “put my board i
   serial:z.string().min(1).describe('Exact USB ADB serial from list_devices.adb_devices.')
 },true,async ({serial})=>{
   if (!backend) throw Error('Configure --upgrade-tool to verify Loader mode.');
-  const [device] = await Promise.all([identifyAdb(adb,serial),listDevices(backend)]);
+  const [device] = await Promise.all([toolPath('adb', adb).then(exe => identifyAdb(exe,serial)),usbDevices()]);
   return {...remember({operation:'enter_loader',backend,adb,device}),next_tool:'execute_plan'};
 });
 tool('enter_loader_from_console','When flashing a running Rockchip Linux board with no usable ADB, identify its logged-in systemd root console, e.g. CH340 on COM4. Prepare a confirmation plan for systemctl reboot loader. Keep OTG connected. After verification use the original firmware path for a flash request.',{
@@ -161,7 +195,7 @@ tool('enter_loader_from_console','When flashing a running Rockchip Linux board w
   baud:z.number().int().min(1200).max(4000000).default(1500000)
 },true,async ({port,baud})=>{
   if (!backend) throw Error('Configure --upgrade-tool to verify Loader on the OTG port.');
-  await listDevices(backend);
+  await usbDevices();
   const device = await identifyConsole(port,baud);
   return {...remember({operation:'enter_console_loader',backend,device}),next_tool:'execute_plan'};
 });
@@ -169,8 +203,7 @@ tool('prepare_flash', 'Plan the USB write for “帮我烧录 xx 固件到板子
   file:filename, location:port, expected_sha256:z.string().regex(/^[0-9a-f]{64}$/i).optional().describe('Publisher SHA-256 if available.'),
   expected_storage:z.string().regex(/^[a-z0-9_-]+$/i).optional().describe('Storage explicitly named by the user, e.g. EMMC. Blocks a plan if the active medium differs or cannot be verified.')
 }, true, async ({file, location, expected_sha256, expected_storage}, extra) => {
-  if (!backend) throw new Error('Configure --upgrade-tool on the USB host for hardware operations.');
-  const device = selectDevice(await listDevices(backend), location);
+  const device = await attached(location);
   const storage=device.mode==='loader' ? await activeStorage(device) : undefined;
   checkFlashStorage(storage,expected_storage);
   const image = await inspectImage(await selectedImage(file, extra));
@@ -230,6 +263,7 @@ tool('prepare_sd_card','Plan to overwrite one removable host card with a boot ca
   if(!card) throw Error('Selected removable card is absent.');
   const image=await inspectImage(await selectedImage(file,extra));
   checkCardSize(mode,image.bytes,card.bytes);
+  await toolPath('sd', sdTool);
   return remember({operation:'make_sd',card,cardMode:mode,image,sdTool});
 });
 async function execute(plan_id, extra, flashOnly) {

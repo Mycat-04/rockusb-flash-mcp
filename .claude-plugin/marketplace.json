@@ -1,0 +1,16 @@
+{
+  "name": "rockusb-tools",
+  "owner": {
+    "name": "Mycat-04"
+  },
+  "metadata": {
+    "description": "Connect Claude Code to local Rockchip boards and SD cards."
+  },
+  "plugins": [
+    {
+      "name": "rockusb",
+      "source": "./plugins/rockusb",
+      "description": "Flash Rockchip boards over USB and prepare SD cards."
+    }
+  ]
+}
