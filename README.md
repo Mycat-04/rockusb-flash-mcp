@@ -4,7 +4,7 @@
 
 Flash Rockchip boards from a local Codex or Claude Code chat. For example, say **“Flash `D:\Firmware\update.img` to the eMMC on my board.”** RockUSB identifies the device and target storage, prepares the image, and asks you to confirm before writing. If more than one board or image matches, the assistant asks you to choose.
 
-**Hardware-tested workflows include writing firmware to eMMC and making an SD boot card.** The maintainer has tested ArmSoM-CM5, ArmSoM-CM7S, ArmSoM-SIGE7S and ArmSoM-AIM5.
+**Hardware-tested workflows include writing firmware to eMMC and making an SD boot card.** The maintainer has tested ArmSoM-CM5, ArmSoM-CM7S, ArmSoM-SIGE7S and ArmSoM-AIM7.
 
 ## Connect RockUSB on Windows
 
@@ -78,12 +78,12 @@ For a **partition backup**, allow free space on the PC for the entire partition.
 
 The maintainer tested the four boards below. The workflows tested include flashing firmware to eMMC and creating an SD boot card with a host card reader.
 
-| Board | Hardware test record |
+| Board | Test result |
 | --- | --- |
 | ArmSoM-CM5 | On a CM5 IO (RK3576), a Windows x64 host wrote a 5,143,798,403-byte Debian 12 XFCE image to eMMC over USB Loader. After reboot, the board ran kernel `6.1.118-rk3576` with `/dev/mmcblk0p3` as its root filesystem. |
-| ArmSoM-CM7S | Tested on hardware by the maintainer. |
-| ArmSoM-SIGE7S | The maintainer ran `systemctl reboot loader` from the Linux serial console. After the board restarted, Windows detected it in USB Loader mode. |
-| ArmSoM-AIM5 | Tested on hardware by the maintainer. |
+| ArmSoM-CM7S | The maintainer asked Codex to make a boot card from a CM7S firmware image and confirmed the SD card in the PC's card reader. RockUSB wrote the image. The maintainer then inserted the card into the CM7S and powered it on. The board successfully booted the operating system from the card. |
+| ArmSoM-SIGE7S | The maintainer gave Codex the firmware path and target, for example, “Flash `D:\Firmware\Sige7S\update.img` to the board's eMMC.” Codex automatically rebooted the running board into USB Loader mode over the debug serial console. After the maintainer confirmed the write, RockUSB flashed the specified image to eMMC successfully. |
+| ArmSoM-AIM7 | Tested on hardware by the maintainer. |
 
 Recovery-based SD upgrade cards, storage switching, erase and partition writes still need end-to-end results. To report yours, include the board, SoC, host OS, image source and checksum, target medium, job result and boot result. Remove personal paths and device serials before posting. [ArmSoM CM5](https://docs.armsom.org/armsom-cm5) · [ArmSoM image flashing guide](https://docs.armsom.org/getting-start/flash-img)
 

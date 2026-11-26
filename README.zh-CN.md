@@ -4,7 +4,7 @@
 
 RockUSB 让你在本地 Codex 或 Claude Code 对话中烧录 Rockchip 开发板。例如，直接说 **“帮我把 `D:\Firmware\update.img` 烧到板子的 eMMC”**。助手会识别开发板、核对目标存储和固件，请你确认后再写入。遇到多块板子或多个同名文件时，会先列出候选项供你选择。
 
-**已在真机验证向 eMMC 烧录固件和制作 SD 启动卡。** 维护者测试过的板型包括 ArmSoM-CM5、ArmSoM-CM7S、ArmSoM-SIGE7S 和 ArmSoM-AIM5。
+**已在真机验证向 eMMC 烧录固件和制作 SD 启动卡。** 维护者测试过的板型包括 ArmSoM-CM5、ArmSoM-CM7S、ArmSoM-SIGE7S 和 ArmSoM-AIM7。
 
 ## 在 Windows 上接入 RockUSB
 
@@ -74,18 +74,18 @@ USB 整包烧录和两种 SD 制卡都使用解压后的 **RKFW** 固件，其�
 
 **备份分区**时，请在电脑上为整个分区预留空间。RockUSB 会按分区表核对备份文件长度。**写入原始分区镜像**时，请在任务目录所在磁盘预留约两倍镜像大小的空间，分别用于暂存镜像和按扇区回读。工具会读回写入范围，按原始镜像长度比较 SHA-256，核对成功后再报告写入完成。
 
-## 硬件实测记录
+## 硬件实测结果
 
 维护者在以下四款开发板上做过真机测试，测试项目包括向 eMMC 烧录固件和使用电脑读卡器制作 SD 启动卡。
 
-| 开发板 | 实测记录 |
+| 开发板 | 实测结果 |
 | --- | --- |
 | ArmSoM-CM5 | 在 CM5 IO（RK3576）上，用 Windows x64 经 USB Loader 向 eMMC 写入 5,143,798,403 字节的 Debian 12 XFCE 固件。重启后运行内核 `6.1.118-rk3576`，根分区为 `/dev/mmcblk0p3`。 |
-| ArmSoM-CM7S | 维护者已完成真机测试。 |
-| ArmSoM-SIGE7S | 在运行中的 Linux 系统上通过调试串口执行 `systemctl reboot loader`，重启后 Windows 主机识别到 USB Loader。 |
-| ArmSoM-AIM5 | 维护者已完成真机测试。 |
+| ArmSoM-CM7S | 将 SD 卡插入电脑读卡器，让 Codex 用指定的 CM7S 固件制作启动卡。确认目标卡后，RockUSB 将固件写入 SD 卡。写入完成后，手动将卡插入 CM7S 并上电，开发板成功从 SD 卡启动并进入系统。 |
+| ArmSoM-SIGE7S | 在 Codex 中指定固件路径和目标，例如“把 `D:\Firmware\Sige7S\update.img` 烧录到板载 eMMC”。Codex 通过调试串口自动将运行中的开发板重启到 USB Loader 模式。确认写入后，RockUSB 成功将指定固件烧录到 eMMC。 |
+| ArmSoM-AIM7 | 维护者已完成真机测试。 |
 
-依赖 recovery 的 SD 升级卡、切换存储、擦除和分区写入仍待补充端到端实测记录。欢迎提交板型、SoC、电脑系统、固件来源及校验值、目标介质、任务结果和启动结果。公开反馈前请隐去个人路径和设备序列号。[ArmSoM CM5 产品文档](https://docs.armsom.org/zh/armsom-cm5) · [ArmSoM 系统镜像烧录指南](https://docs.armsom.org/zh/getting-start/flash-img)
+依赖 recovery 的 SD 升级卡、切换存储、擦除和分区写入仍待补充端到端实测结果。欢迎提交板型、SoC、电脑系统、固件来源及校验值、目标介质、任务结果和启动结果。公开反馈前请隐去个人路径和设备序列号。[ArmSoM CM5 产品文档](https://docs.armsom.org/zh/armsom-cm5) · [ArmSoM 系统镜像烧录指南](https://docs.armsom.org/zh/getting-start/flash-img)
 
 ## 设置与排查
 
